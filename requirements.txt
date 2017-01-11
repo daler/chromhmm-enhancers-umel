@@ -1,8 +1,9 @@
-pybedtools
-gffutils
-pandas
-yaml
-snakemake
-chromhmm
 bedtools
+chromhmm
+gffutils
 jupyter
+pandas
+pybedtools
+seaborn
+snakemake
+yaml
