@@ -1,0 +1,6 @@
+logs
+data
+binarized
+.snakemake
+models
+compare_models
