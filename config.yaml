@@ -102,23 +102,7 @@ MEM_PER_THREAD: 4096
 #
 # ChromHMM will divide the genome into bins of this many bp
 BINSIZE: 200
-
-# STATES
-# Run models for each of these state numbers
-STATES:
-  - 2
-  - 3
-  - 4
-  - 5
-  - 6
-  - 7
-  - 8
-  - 9
-  - 10
-  - 11
-  - 12
-
-
+  #
 # SUBSETS
 #
 # Subsets of full dataset to use. These are defined in a user-created file
@@ -139,4 +123,15 @@ STATES:
 # umel    h3k36me3  control
 # umel    dnase     
 SUBSETS:
-  - subset1
+  subset1:
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
