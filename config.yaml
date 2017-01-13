@@ -1,0 +1,137 @@
+# DATA_TABLE
+#
+# should have the following tab-delimited fields:
+# - cell
+#   celltype. Important for ChromHMM
+#
+# - mark
+#   as in "chromatin mark" (terminology from ChromHMM). Will be used to label
+#   the ChromHMM output figures
+#
+# - rep
+#   replicate. BAM files whose celltype and mark are identical but whose
+#   replicates differ will be merged.
+#
+# - assembly
+#   data file is in these coordinates
+#
+# - used_for
+#   primarily used for determining which data should be used for ChromHMM model
+#   building ("model") and which should be reserved for enrichment testing
+#   ("enrich")
+#
+# - type
+#   file type. If a BED file is gzipped, note the type should be "bed.gz". This
+#   is because the ChromHMM enrichment step requires everything to be in the
+#   same form.
+#
+# - url
+#   Data will be downloaded from http[s]:// URLs, or symlinked from file paths.
+#   The destination will be data/prepare_data/{assembly}/{type}/{accession}
+#
+# - accession
+#   Unique name for the data
+#
+# Here is an example data table (note some URLs truncated for clarity):
+#
+# cell   mark      rep  assembly   used_for   type      url        accession
+# umel   h3k4me1   1    mm9        model      bam       http://hgdownload.cse.ucsc.edu...rtalC57bl6StdAlnRep1.bam  wgEncodeLicrHistoneMelH3k04me1MImmortalC57bl6StdAlnRep1
+# umel   h3k4me3   1    mm9        model      bam       http://hgdownload.cse.ucsc.edu...rtalC57bl6StdAlnRep1.bam  wgEncodeLicrHistoneMelH3k04me3MImmortalC57bl6StdAlnRep1
+# umel   ctcf      1    mm9        enrich     bed.gz    https://www.encodeproject.org/...ENCFF001YJI.bed.gz        ctcf_umel_encode
+# umel   ctcf      1    mm9        enrich     bed.gz    https://www.encodeproject.org/...ENCFF001YGS.bed.gz        ctcf_umel_encode2
+# umel   ctcf      1    mm9        enrich     bed.gz    http://hgdownload.cse.ucsc.edu/...7bl6StdPk.broadPeak.gz   ctcf_umel_encode3
+# umel   myb       1    mm9        enrich     bed.gz    https://www.encodeproject.org/...load/ENCFF001YJD.bed.gz   myb_umel_encode
+# umel   tal1      1    mm9        enrich     bed.gz    https://www.encodeproject.org/...load/ENCFF001YGY.bed.gz   tal1_umel_encode
+# all    enhancers 1    mm10       enrich     bed       data/prepare_data/enhancers/enhancer.lbl.gov.bed           enhancers
+DATA_TABLE: 'data.tsv'
+
+
+# TARGET_ASSEMBLY
+#
+# specifies the final assembly to be used for ChromHMM input
+# data. Any data listed in DATA_TABLE that is from a different assembly will be
+# lifted over to data/prepare_data/{TARGET_ASSEMBLY}/{type}/{accession}
+TARGET_ASSEMBLY: 'mm9'
+
+
+# ZIP_URL
+#
+# specifies where to get the supplemental data from Schoenfelder et al
+ZIP_URL: 'http://www.ebi.ac.uk/arrayexpress/files/E-MTAB-2414/E-MTAB-2414.additional.1.zip'
+
+
+# GTF
+#
+# The URL to the GTF file to use. This one is from GENCODE, mm9 and has
+# features of the form:
+#
+# chr1    HAVANA  gene    3044314 3044814 .       +       .       gene_id "ENSMUSG00000090025.1"; transcript_id "ENSMUSG00000090025.1"; gene_type "pseudogene"; gene_status "KNOWN"; gene_name "Gm16088"; transcript_type "pseudogene"; transcript_status "KNOWN"; transcript_name "Gm16088"; level 2; havana_gene "OTTMUSG00000030059.1";
+#
+# Note that the data prep pipeline expects GTF files of this form and does
+# things like stripping the version number off each gene ID
+GTF: 'ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_mouse/release_M1/gencode.vM1.annotation.gtf.gz'
+
+
+# TRANSCRIPTOME:
+# Transcriptome FASTA. This one is from GENCODE, mm9 and has sequence headers
+# of the form:
+#
+# >ENSMUST00000070533.4|ENSMUSG00000051951.5|OTTMUSG00000026353.2|OTTMUST00000065166.1|Xkr4-001|Xkr4|3634|UTR5:1-150|CDS:151-2094|UTR3:2095-3634|
+#
+# Note that the data prep pipeline expects sequence headers of this form.
+TRANSCRIPTOME: 'ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_mouse/release_M1/gencode.vM1.pc_transcripts.fa.gz'
+
+
+# GENOME FASTA
+# genome fasta file. The rule expects the data at this URL to be gzipped, which
+# is almost always the case in practice.
+GENOME_FASTA: 'ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_mouse/release_M1/NCBIM37.genome.fa.gz'
+
+
+# CHROMHMM SETTINGS -----------------------------------------------------
+#
+CHROMHMM_THREADS: 6
+
+# MEM_PER_THREAD
+#
+# Kilobytes of memory to run Java in. This expects CHROMHMM_THREADS
+# x MEM_PER_THREAD megabytes of memory available.
+MEM_PER_THREAD: 4096
+
+# BINSIZE
+#
+# ChromHMM will divide the genome into bins of this many bp
+BINSIZE: 200
+  #
+# SUBSETS
+#
+# Subsets of full dataset to use. These are defined in a user-created file
+# config/{subset}.tsv and have the following format, where the values in cell
+# must exist in the cell column of DATA_TABLE and the values of mark and
+# control must exist in the accession column of DATA_TABLE. Each cell+mark and
+# cell+control combo must be indicated as "model" in the used_for column of
+# DATA_TABLE.
+#
+# For example, if we specify "subset1" as a subset, then the file
+# "config/subset1.tsv" might contain the following:
+#
+# cell    mark      control
+# umel    h3k27ac   control
+# umel    h3k4me1   control
+# umel    h3k27me3  control
+# umel    h3k4me3   control
+# umel    h3k36me3  control
+# umel    dnase     
+SUBSETS:
+  subset1:
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
