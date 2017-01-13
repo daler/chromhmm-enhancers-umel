@@ -1,5 +1,5 @@
 
-*For the impatient: The file [`enhancers.bed`](enhancers.bed) has the 48041 called
+*For the impatient: The file [`enhancers.bed`](https://github.com/daler/chromhmm-enhancers-umel/raw/master/enhancers.bed) has the 48041 called
 enhancers in UMEL cells for the following model:*
 
 ![img](umel_aggregated_plots.png)
@@ -94,16 +94,16 @@ changes, except perhaps for `CHROMHMM_THREADS` and `MEM_PER_THREAD` in the
 `config.yaml` file, since the values of these variables depend on your
 available CPU and RAM.
 
-- `config.yaml`. This file contains lots of documentation to describe exactly
+- [`config.yaml`](config.yaml). This file contains lots of documentation to describe exactly
 what is configured and how to change it if needed. It is the main point of
 configuration.
 
-- `data.tsv`. The format of this file is described in `config.yaml`. It defines
-URLs or local paths from which to acquire data as well as how they should be
-labeled.
+- [`data.tsv`](data.tsv). The format of this file is described in
+`config.yaml`. It defines URLs or local paths from which to acquire data as
+well as how they should be labeled.
 
-- `config/` directory. This is specifies which datasets are used for different
-ChromHMM models. See the `config.yaml` for a description.
+- [`config` directory](config). This is specifies which datasets are used for
+different ChromHMM models. See the `config.yaml` for a description.
 
 ## Run
 
@@ -324,4 +324,4 @@ state 2 has low correlation with models with 2-5 states.
 For coloring and labeling the states for visualization in a genome browser, run
 `python colorize_model.py -h` to check the help for that script. The final
 enhancer calls for the 6-state model can be found in
-[`enhancers.bed`](enhancers.bed).
+[`enhancers.bed`](https://github.com/daler/chromhmm-enhancers-umel/raw/master/enhancers.bed).
