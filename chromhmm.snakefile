@@ -18,9 +18,8 @@ DATA_TABLE = config['DATA_TABLE']
 MEM_PER_THREAD = config['MEM_PER_THREAD']
 BINSIZE = config['BINSIZE']
 CHROMHMM_THREADS = config['CHROMHMM_THREADS']
-states = config['STATES']
-subsets = config['SUBSETS']
 
+localrules: dummy_symlink, copy_models_to_compare, aggregate_plots
 
 # ----------------------------------------------------------------------------
 # Data table prep
@@ -51,10 +50,10 @@ beds = expand('data/beds_from_bams/{key}.bed', key=keys)
 
 # Construct the list of files we will use for enrichment testing.
 enriched_df = df[df['used_for'] == 'enrich']
-enriched_beds = expand(
+enriched_beds = list(set(expand(
     'data/prepare_data_lifted_over/{_type}/{accession}.{_type}', zip,
     _type=enriched_df['type'], accession=enriched_df['accession']
-)
+)))
 
 # ChromHMM enrichment program needs all files in a single directory. This
 # copies everything over, or gzips as needed.
@@ -63,29 +62,35 @@ for i in enriched_beds:
     if i.endswith('.bed'):
         i = i + '.gz'
     linked.append(os.path.join('data/symlinked_for_enrich', os.path.basename(i)))
-linked = list(set(linked))
 
-# ChromHMM model comparison needs all models' emissions file in the same
-# directory, so this copies everything over.
-linked_emissions = expand('compare_models/{subset}/emissions_{state}.txt', state=states, subset=subsets)
 
-# Target files for model comparison
-compared = expand('models/{subset}/{state}/model_comparison_{state}.txt', state=states, subset=subsets)
+def subset_expand(subset, pattern):
+    celltypes = pd.read_table(os.path.join('config', subset + '.tsv')).cell
+    states = config['SUBSETS'][subset]
+    return sorted(set(expand(pattern, subset=subset, cell=celltypes, chrom=chroms, state=states)))
 
-# binarized output files. Example output:
-# e14.5-liver  chr1
-# h3k27ac  h3k27me3 h3k36me3 h3k4me1 h3k4me2 h3k4me3 h3k9ac h3k9me3
-# 0        0        0        0       0       0       0      0
-# 0        0        0        0       0       0       0      0
-# 0        0        0        0       0       0       0      0
-binarized = expand('binarized/{subset}/{cell}_{chrom}_binary.txt', cell=cells, chrom=chroms, subset=subsets)
+_patterns = {
+    'binarized': 'binarized/{subset}/{cell}_{chrom}_binary.txt',
+    'compare_models': [
+        'models/{subset}/{state}/{cell}_model_comparison_{state}.txt',
+        'compare_models/{subset}/emissions_{state}.txt'],
+    'learn_model': 'models/{subset}/{state}/{cell}_{state}_segments.bed',
+    'enrichment': 'models/{subset}/{state}/{cell}_enrichment.txt',
+    'agg': [
+        'models/{subset}/{state}/{cell}_aggregated_plots.pdf',
+        'models/{subset}/{state}/{cell}_aggregated_plots.png'
+    ],
+}
 
-# Expected files for model output (here we just detect the emissions PNG)
-models = expand('models/{subset}/{state}/emissions_{state}.png', subset=subsets, state=states)
-
-# Expected files for enrichment output
-enrich = expand('models/{subset}/{state}/{cell}_enrichment.txt', subset=subsets, state=states, cell=cells)
-enrich += expand('models/{subset}/{state}/{cell}_uniformscale_enrichment.txt', subset=subsets, state=states, cell=cells)
+targets_dict = {}
+for k, v in _patterns.items():
+    t = []
+    if isinstance(v, str):
+        v = [v]
+    for subset in config['SUBSETS'].keys():
+        for pattern in v:
+            t.extend(subset_expand(subset, pattern))
+    targets_dict[k] = t
 
 
 def make_relative_symlink(target, linkname):
@@ -113,7 +118,7 @@ def fill_filetable(subset_filename):
 
 
 rule all:
-    input:  models + linked + enrich + linked_emissions + compared
+    input: targets_dict.values()
 
 
 # ----------------------------------------------------------------------------
@@ -131,12 +136,21 @@ rule bam_to_bed:
 # ----------------------------------------------------------------------------
 # Binarize the bed files for each subset. This is run once for each defined
 # subset.
+
+def beds_for_subset(wc):
+    beds = []
+    df = pd.read_table(os.path.join('config', subset + '.tsv'))
+    for _, row in df.iterrows():
+        beds.append('data/beds_from_bams/{0.cell}_{0.mark}.bed'.format(row))
+    return beds
+
+
 rule binarize_bed:
     input:
-        beds=beds,
+        beds=beds_for_subset,
         cellmarkfiletable='config/{subset}.tsv'
     output:
-        binarized=expand('binarized/{{subset}}/{cell}_{chrom}_binary.txt', cell=cells, chrom=chroms)
+        binarized=expand('binarized/{{subset}}/{{cell}}_{chrom}_binary.txt', chrom=chroms)
     log: 'binarized/{subset}/BinarizeBed.log'
     run:
         fill_filetable(
@@ -144,42 +158,56 @@ rule binarize_bed:
                 input.cellmarkfiletable + '.filled',
                 header=False, index=False, sep='\t')
         shell(
-            '''
-            ChromHMM.sh -Xmx{MEM_PER_THREAD}M \\
-            BinarizeBed \\
-            -b {BINSIZE} \\
-            {ASSEMBLY} \\
-            data/beds_from_bams \\
-            {input.cellmarkfiletable}.filled \\
-            binarized/{wildcards.subset} > {log} 2>&1''')
+            'ChromHMM.sh -Xmx{MEM_PER_THREAD}M '
+            'BinarizeBed '
+            '-b {BINSIZE} '
+            '{ASSEMBLY} '
+            'data/beds_from_bams '
+            '{input.cellmarkfiletable}.filled '
+            'binarized/{wildcards.subset} > {log} 2>&1'
+        )
+
 
 # ----------------------------------------------------------------------------
 # Learn model. This is run once for each defined subset for each defined state
 # number.
+
+def _learn_model_inputs(wc):
+    return subset_expand(wc.subset, 'binarized/{subset}/{cell}_{chrom}_binary.txt')
+
 rule learn_model:
-    input: rules.binarize_bed.output
+    input: _learn_model_inputs
     output:
-        'models/{subset}/{state}/emissions_{state}.png',
-        'models/{subset}/{state}/emissions_{state}.txt',
-        expand('models/{{subset}}/{{state}}/{cell}_{{state}}_segments.bed', cell=cells)
+        png='models/{subset}/{state}/emissions_{state}.png',
+        txt='models/{subset}/{state}/emissions_{state}.txt',
+        transitions_txt='models/{subset}/{state}/transitions_{state}.txt',
+
+        # Since this output file also contains "{cell}", its wildcards do not
+        # match the other output files. See the `dummy_symlink` rule below.
+        #segments='models/{subset}/{state}/{cell}_{state}_segments.bed'
+
     log: 'models/{subset}/{state}/LearnModel.log'
     threads: config['CHROMHMM_THREADS']
-    run:
-        outdir = os.path.dirname(output[0])
-        shell(
-            """
-            ChromHMM.sh -Xmx{MEM_PER_THREAD}M \\
-            LearnModel \\
-            -b {BINSIZE} \\
-            -p {threads} \\
-            -noenrich \\
-            -nobrowser \\
-            binarized/{wildcards.subset} \\
-            {outdir} \\
-            {wildcards.state} \\
-            {ASSEMBLY} \\
-            > {log} 2>&1
-            """)
+    shell:
+        "ChromHMM.sh -Xmx{MEM_PER_THREAD}M "
+        "LearnModel "
+        "-b {BINSIZE} "
+        "-p {threads} "
+        "-noenrich "
+        "-nobrowser "
+        "-printposterior "
+        "binarized/{wildcards.subset} "
+        "$(dirname {output.txt}) "
+        "{wildcards.state} "
+        "{ASSEMBLY} "
+        "> {log} 2>&1"
+
+
+rule dummy_symlink:
+    input: 'models/{subset}/{state}/emissions_{state}.txt'
+    output: 'models/{subset}/{state}/{cell}_{state}_segments.bed'
+    shell:
+        'touch {output}'
 
 # ----------------------------------------------------------------------------
 # Copy enrichment files to directory gzipping if needed.
@@ -200,7 +228,6 @@ rule copy_to_enrichment_dir:
 # Create heatmaps of enrichment of each state. Runs once for each subset for
 # each state number.
 #
-# This creates both column-scaled and uniform color scale versions.
 rule overlap_enrichment:
     input:
         segments='models/{subset}/{state}/{cell}_{state}_segments.bed',
@@ -209,39 +236,24 @@ rule overlap_enrichment:
         txt='models/{subset}/{state}/{cell}_enrichment.txt',
         png='models/{subset}/{state}/{cell}_enrichment.png',
         svg='models/{subset}/{state}/{cell}_enrichment.svg',
-        txtu='models/{subset}/{state}/{cell}_uniformscale_enrichment.txt',
-        pngu='models/{subset}/{state}/{cell}_uniformscale_enrichment.png',
-        svgu='models/{subset}/{state}/{cell}_uniformscale_enrichment.svg',
     log: 'models/{subset}/{state}/{cell}_OverlapEnrichment.log'
-    run:
-        inputcoorddir = 'data/symlinked_for_enrich'
-
-        outfileprefix = output.txt.replace('.txt', '')
-        shell(
-            """
-            ChromHMM.sh -Xmx{MEM_PER_THREAD}M \\
-            OverlapEnrichment {input.segments} {inputcoorddir} {outfileprefix} \\
-            > {log} 2>&1
-            """)
-
-        outfileprefix = output.txtu.replace('.txt', '')
-        shell(
-            """
-            ChromHMM.sh -Xmx{MEM_PER_THREAD}M \\
-            OverlapEnrichment -uniformscale {input.segments} {inputcoorddir} {outfileprefix} \\
-            > {log} 2>&1
-            """)
+    params: prefix='models/{subset}/{state}/{cell}_enrichment'
+    shell:
+        "ChromHMM.sh -Xmx{MEM_PER_THREAD}M "
+        "OverlapEnrichment {input.segments} "
+        "data/symlinked_for_enrich "
+        "{params.prefix} "
+        "> {log} 2>&1"
 
 
 # ----------------------------------------------------------------------------
 # Copy over the models for comparison. Runs once after all models have been
 # created.
 rule copy_models_to_compare:
-    input: expand('models/{{subset}}/{state}/emissions_{state}.txt', state=states)
-    output: expand('compare_models/{{subset}}/emissions_{state}.txt', state=states)
-    run:
-        for target, linkname in zip(input, output):
-            shell('cp {target} {linkname}')
+    input: 'models/{subset}/{state}/emissions_{state}.txt'
+    output: 'compare_models/{subset}/emissions_{state}.txt'
+    shell:
+        'cp {input} {output}'
 
 
 # ----------------------------------------------------------------------------
@@ -250,15 +262,10 @@ rule compare_models:
     input:
         reference='models/{subset}/{state}/emissions_{state}.txt',
         to_compare=rules.copy_models_to_compare.output
-    output: 'models/{subset}/{state}/model_comparison_{state}.txt'
-    run:
-        compdir = os.path.dirname(input.to_compare[0])
-        outprefix = output[0].replace('.txt', '')
+    output: 'models/{subset}/{state}/{cell}_model_comparison_{state}.txt'
+    params: prefix='models/{subset}/{state}/{cell}_model_comparison_{state}'
+    shell:
+        "ChromHMM.sh -Xmx{MEM_PER_THREAD}M "
+        "CompareModels {input.reference} $(dirname {input.to_compare}) {params.prefix} "
 
-        shell(
-            """
-            ChromHMM.sh -Xmx{MEM_PER_THREAD}M \\
-            CompareModels {input.reference} {compdir} {outprefix}
-            """
-        )
 # vim: ft=python
