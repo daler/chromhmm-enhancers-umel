@@ -1,8 +1,8 @@
 
 *For the impatient: The file
 [`enhancers.bed`](https://github.com/daler/chromhmm-enhancers-umel/raw/master/enhancers.bed)
-has the 48041 called enhancers in UMEL cells, which correspond to segments
-called as state 3 in the following model:*
+has the 48041 called enhancers in UMEL cells, which correspond to segments in
+the mm9 mouse assembly called as state 3 in the following model:*
 
 ![img](umel_aggregated_plots.png)
 
