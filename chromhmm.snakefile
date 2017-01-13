@@ -268,4 +268,22 @@ rule compare_models:
         "ChromHMM.sh -Xmx{MEM_PER_THREAD}M "
         "CompareModels {input.reference} $(dirname {input.to_compare}) {params.prefix} "
 
+# ----------------------------------------------------------------------------
+# Aggregate plots
+rule aggregate_plots:
+    input:
+        emissions='models/{subset}/{state}/emissions_{state}.txt',
+        transitions='models/{subset}/{state}/transitions_{state}.txt',
+        enrichment='models/{subset}/{state}/{cell}_enrichment.txt',
+        uniform_enrichment='models/{subset}/{state}/{cell}_enrichment.txt',
+        comparison='models/{subset}/{state}/{cell}_model_comparison_{state}.txt',
+        script='viz.py',
+    output:
+        png='models/{subset}/{state}/{cell}_aggregated_plots.png',
+        pdf='models/{subset}/{state}/{cell}_aggregated_plots.pdf'
+    script:
+        'viz.py'
+
+
+
 # vim: ft=python
