@@ -1,10 +1,16 @@
+
+*For the impatient: The file [`enhancers.bed`](enhancers.bed) has the 48041 called
+enhancers in UMEL cells for the following model:*
+
+![img](umel_aggregated_plots.png)
+
 ## Overview
 
 This repository contains all information and code needed to call enhancers from
 histone modification ChIP-seq data in uninduced MEL cells. It boostraps the
 installation of requirements, downloads all data needed, and runs multiple
-ChromHMM models in parallel. It can be run on a high-performance cluster or
-a laptop, all using the same code.
+[ChromHMM](http://compbio.mit.edu/ChromHMM/) models in parallel. It can be run
+on a high-performance cluster or a laptop, all using the same code.
 
 The analysis uses about 25GB of storage and takes a few hrs to run a machine
 with 6 cores and 24GB RAM, using a single set of chromatin marks and from 2 to
@@ -47,26 +53,21 @@ the target assembly, ready for use by ChromHMM.
 The output of this stage is multiple ChromHMM models using different sets of
 input and different numbers of states.
 
-3. Final model preparation (`finalize.py`)
-
-    - add labels to segments
-    - color segments by specified colors
-    - create final BED files
-
-This is a single script that converts ChromHMM output into a BED file ready for
-downstream work.
-
+The helper script `colorize_model.py` can be used to re-label and re-color
+segmentations for cleaner presentation.
 
 ## Setup
 
-We use [bioconda](https://bioconda.github.io/) to handle software installation
+[bioconda](https://bioconda.github.io/) handles all software installation
 dependencies.
 
-1. Follow the bioconda installation instructions at https://bioconda.github.io to enable bioconda.
+1. Follow the [bioconda installation instructions](https://bioconda.github.io)
+to install conda and enable the bioconda channel.
 
-2. Create two new conda environments. These create isolated environments that
-are completely independent of anything you might already have installed on your
-machine. The names are important:
+2. Create two new conda environments. These are isolated environments that are
+completely independent of anything you might already have installed on your
+machine. The environment names (`chromhmm-enhancers`, `crossmap`) are important
+because later code expects those names.
 
 ```
 conda create -n chromhmm-enhancers --file requirements.txt python=3
@@ -89,17 +90,20 @@ source deactivate
 
 The main configuration points are the following. If you want to generate
 enhancer calls for UMEL cells in the mm9 assembly, you do not need to make any
-changes, except perhaps for `CHROMHMM_THREADS` and `MEM_PER_THREAD`, which
-depend on your available CPU and RAM.
+changes, except perhaps for `CHROMHMM_THREADS` and `MEM_PER_THREAD` in the
+`config.yaml` file, since the values of these variables depend on your
+available CPU and RAM.
 
 - `config.yaml`. This file contains lots of documentation to describe exactly
-what is configured.
+what is configured and how to change it if needed. It is the main point of
+configuration.
 
 - `data.tsv`. The format of this file is described in `config.yaml`. It defines
 URLs or local paths from which to acquire data as well as how they should be
 labeled.
 
-- `config/` directory. See the `config.yaml` for a description.
+- `config/` directory. This is specifies which datasets are used for different
+ChromHMM models. See the `config.yaml` for a description.
 
 ## Run
 
@@ -158,79 +162,68 @@ snakemake --printshellcmds --snakefile chromhmm.snakefile --cores 6
 Below is an annotated directory tree after running both files. Files of
 particular note are indicated with a `!`.
 
-The easiest way to get a feel for the different state numbers is to go to
-a subset's directory and view all the output images across states. For example,
-open these files in an image viewer to compare emission probabilities across
-all state numbers. These show which states have high probabilities of having
-a particular mark:
-
-```
-eog models/subset1/*/emissions_*.png
-```
-
-
-Model comparisons have been automatically performed. These comparison show
-which states are shared with other states. Lighter colors indicate a state in
-this model (row label) not seen in a model with a different state number
-(column label):
-
-```
-models/subset1/*/model_comparison_*.png
-```
-
-For interpreting states, view the enrichment plots, which show which states are
-enriched for the various factors held out of the model:
-
-```
-models/subset1/*/*_enrichment.png
-```
-
-## Final output
-
-Decide on a model to use. For example, here 6-state model for `subset1` had
-biologically interpretable states that were non-redundant.
+Configuration files:
 
 ```
 .
 ├── requirements.txt                              ! # Programs required for this analysis, installed with conda
 ├── data.tsv                                      ! # CONFIGURE DATA SOURCES HERE
 ├── config.yaml                                   ! # Top level config file to be edited by user
-├── prepare_data.snakefile                        ! # Data prep workflow
-├── chromhmm.snakefile                            ! # ChromHMM workflow
-├── README.md                                     ! # This file
-├── slurm_cluster_config.yaml                     ! # Cluster config for running on SLURM cluster
+├── post-model-config.yaml                        ! # Used to configure which model to use and how to color states
 ├── config                                          # Subsets for ChromHMM to run are stored here
 │   ├── subset1.tsv                               !   # Original file written by user
 │   └── subset1.tsv.filled                            # (Version filled in by the workflow, pointing to the lifted-over, converted-to-BED files.)
-├── colorize_lookup                               ! # Colors and labels to use for segmentation classes (used by colorize_model.py, written by user)
-├── make_chromhmm_track.sh                        ! # Create a labeled BED12 file of segmentations
-├── models                                        ! # Output from ChromHMM
+```
+
+Code and infrastructure files:
+
+```
+├── README.md                                     ! # This file
+├── prepare_data.snakefile                        ! # Data prep workflow
+├── chromhmm.snakefile                            ! # ChromHMM workflow
+├── colorize_model.py                               # Colors the segmentation. Used by make_chromhmm_track.sh.
+├── helpers.py                                      # Helpful functions
+├── viz.py                                          # Used for generating the aggregated plots
+```
+
+Important output files:
+
+```
+├── models                                          # Output from ChromHMM
 │   └── subset1                                       # (Each configured subset has its own subdirectory)
 │       ├── 10                                          # (Each configured number of states has its own sub-subdirectory)
-│       │   ├── emissions_10.png                  !       # Emissions, critical for interpreting model
-│       │   ├── model_comparison_10.png           !       # Compares other states in other models
-│       │   ├── transitions_10.png                !       # Transitions, useful for interpreting model
-│       │   ├── umel_10_segments.bed                      # BED file of segmentations, labeled by state number
-│       │   ├── umel_enrichment.png               !       # Enrichment with files configured in `data.tsv`. Each column's colorscale is scaled independently. Critical for interpreting model
-│       │   ├── umel_uniformscale_enrich ment.png         # Enrichment with files configured in `data.tsv`. Single colorscale for all.
+│       │   ├── umel_10_segments.bed              !       # BED file of segmentations, labeled by state number
+│       │   ├── umel_aggregated_plots.png         !       # Single-figure set of aggregated plots for the model
+│       │   ├── emissions_10.png                          # Emissions, critical for interpreting model
+│       │   ├── emissions_10.txt                          # Data used for emissions_10.png
+│       │   ├── model_comparison_10.png                   # Compares other states in other models
+│       │   ├── transitions_10.png                        # Transitions, useful for interpreting model
+│       │   ├── umel_enrichment.png                       # Enrichment with files configured in `data.tsv`. Each column's colorscale is scaled independently. Critical for interpreting model
+│       │   ├── umel_uniformscale_enrichment.png          # Enrichment with files configured in `data.tsv`. Single colorscale for all.
 │       │   └── webpage_10.html                           # Aggregates output for the model
+
+... more models ...
+
 │       ├── 11                                         # 11-state model for subset1
 │       │   └── ...                                      # files for 11-state model
 │       └── ...
+```
 
-# The remaining files documented below are either source files or intermediate files created while generating the above output.
 
+Intermediate and data files, mostly for completeness and for understanding the
+architecture of the workflows:
+
+```
 
 ├── binarized                           # binarized files used by ChromHMM
 │   └── subset1                           # (each configured subset has its own subdirectory)
 │       ├── umel_chr10_binary.txt           # (there is one file for each chromosome in the subdirectory)
 │       ...
 │       ...
-├── colorize_model.py               # Colors the segmentation. Used by make_chromhmm_track.sh.
 ├── compare_models                  # ChromHMM emissions from all state numbers, used for comparison of states.
 │   └── subset1                       # (each configured subset has its own subdirectory)
-│       ├── emissions_10.txt
-│       ├── emissions_11.txt
+│       ├── emissions_10.txt          # A copy of `emissions_10.txt` from the models/subset1/10 directory.
+│       ├── emissions_11.txt          # ...
 │       ...
 │       ...
 ├── data
@@ -239,7 +232,11 @@ biologically interpretable states that were non-redundant.
 │   │   ├── umel_dnase.bed
 │       ...
 │       ...
-│   ├── model_data                         # symlinks to lifted-over BAMs, relabeled and ready for use by ChromHMM
+│   ├── prepare_data_lifted_over    # Mirrors `prepare_data` directory, but data here are have been lifted-over if needed; otherwise symlinked.
+│   │   ├── bam
+│   │   ├── bed
+│   │   ├── bed.gz
+│   ├── model_data                  # symlinks to lifted-over BAMs in prepare_data_lifted_over, relabeled and ready for use by ChromHMM
 │   │   ├── umel_control.bam
 │   │   ...
 │   │   ...
@@ -266,10 +263,6 @@ biologically interpretable states that were non-redundant.
 │   │       ├── bed.gz                               # Downloaded or symlinked gzipped BED files. URLs configured in `data.tsv`
 │   │       │   ├── chd1_umel_encode.bed.gz
 │   │       │   └── ...
-│   ├── prepare_data_lifted_over                     # Mirrors `prepare_data` directory, but data here are have been lifted-over if needed; otherwise symlinked.
-│   │   ├── bam
-│   │   ├── bed
-│   │   ├── bed.gz
 │   └── symlinked_for_enrich                  # Directory of files to test for enrichment with ChromHMM models. Configured in `data.tsv`.
 │       ├── chd1_umel_encode.bed.gz
 │       └── ...
@@ -283,9 +276,52 @@ biologically interpretable states that were non-redundant.
 │   └── gene-lists                            # Final gene lists
 │       ├── union-ensembl.gene.txt            # (e.g., union of Li and Hughes genes, in Ensembl accession format)
 │       └── ...
-├── helpers.py                                                # Helpful functions
-├── include                                                   # Data included in the repository -- mostly because it can't be easily downloaded in script
-    ├── MEL_Ldb1_induced.bed                                  # LDB1 peaks in IMEL, downloaded from PSU Genome Browser mirror
-    └── MEL_Ldb1_uninduced.bed                                # LDB1 peaks in UMEL, downloaded from PSU Geneome Browser mirror
+├── include                                   # Data included in the repository -- mostly because it can't be easily downloaded in script
+    ├── MEL_Ldb1_induced.bed                  # LDB1 peaks in IMEL, downloaded from PSU Genome Browser mirror
+    └── MEL_Ldb1_uninduced.bed                # LDB1 peaks in UMEL, downloaded from PSU Geneome Browser mirror
 
 ```
+
+The easiest way to get a feel for the different state numbers is to go to
+a subset's directory and view all the aggregated output images across states.
+
+For example, open these files in an image viewer:
+
+```
+models/subset1/*/*aggregated_plots.png
+```
+
+
+## Final output
+
+Decide on a model to use. For example, here 6-state model for `subset1` had
+biologically interpretable states that were non-redundant.
+
+![img](umel_aggregated_plots.png)
+
+Heatmaps are scaled to the max/min values in each panel; for the most part
+units are irrelevant as we are looking for qualitative patterns (see [ChromHMM
+paper](http://www.nature.com/nmeth/journal/v9/n3/full/nmeth.1906.html) for
+details.
+
+- the **emissions** heatmap shows the probability of each mark (columns) in each
+state (row).
+
+- the **enrichment** heatmap and **uniform_enrichment** heatmap show the
+enrichment of each factor (column) in each state (row). The first heatmap is
+column-scaled to identify which state has the maximum enrichment for each
+factor. The second heatmap has a uniform scale across the entire matrix, to
+look at absolute differences across factors.
+
+* the **transitions** heatmap shows the probability of transitions between states.
+
+* the **comparison** heatmap shows the correlation of the states of this
+6-state model (rows) against the most similar state in each of the other states
+run in the workflow. For example, state 2 (DNase hypersensitive, enriched with
+CTCF and RAD21) is a state that doesn't appear until the 6-state models since
+state 2 has low correlation with models with 2-5 states.
+
+For coloring and labeling the states for visualization in a genome browser, run
+`python colorize_model.py -h` to check the help for that script. The final
+enhancer calls for the 6-state model can be found in
+[`enhancers.bed`](enhancers.bed).
