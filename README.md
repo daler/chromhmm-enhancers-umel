@@ -1,4 +1,8 @@
 
+
+[![DOI](https://zenodo.org/badge/78880284.svg)](https://zenodo.org/badge/latestdoi/78880284)
+
+
 *For the impatient: The file
 [`enhancers.bed`](https://github.com/daler/chromhmm-enhancers-umel/raw/master/enhancers.bed)
 has the 48041 called enhancers in UMEL cells, which correspond to segments in
